@@ -29,16 +29,12 @@ if not url or not key:
 supabase: Client = create_client(url, key)
 
 # --- CORS Middleware ---
-origins = [
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "http://localhost",
-]
+origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
