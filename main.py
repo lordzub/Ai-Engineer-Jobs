@@ -29,12 +29,16 @@ if not url or not key:
 supabase: Client = create_client(url, key)
 
 # --- CORS Middleware ---
-origins = ["*"]
+origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost",
+]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -318,6 +322,105 @@ async def get_company_by_slug(slug: str):
     if response.data:
         return {"company": response.data}
     return {"error": "Company not found"}, 404
+
+
+# --- Salary Statistics Endpoint ---
+@app.get("/api/stats/salary")
+async def get_salary_stats(
+    country: List[str] = Query(None), 
+    state: List[str] = Query(None), 
+    city: List[str] = Query(None),
+    job_type: List[str] = Query(None),
+    location_type: List[str] = Query(None), 
+    company_id: List[str] = Query(None),
+):
+    """
+    Returns salary statistics for the given filters.
+    Provides avg, min, max salary plus job counts.
+    """
+    # Build base query for jobs with salary data
+    query = supabase.table('jobs').select(
+        'salary_min, salary_max, salary_currency, location_type'
+    )
+    
+    # Apply filters
+    ignore_values = {None, '', 'null', 'undefined'}
+    
+    def clean_list(values):
+        if not values:
+            return None
+        cleaned = [v for v in values if v not in ignore_values]
+        return cleaned if cleaned else None
+    
+    cleaned_countries = clean_list(country)
+    if cleaned_countries:
+        query = query.in_('country', cleaned_countries)
+    
+    cleaned_states = clean_list(state)
+    if cleaned_states:
+        query = query.in_('state', cleaned_states)
+    
+    cleaned_cities = clean_list(city)
+    if cleaned_cities:
+        query = query.in_('city', cleaned_cities)
+    
+    cleaned_job_types = clean_list(job_type)
+    if cleaned_job_types:
+        query = query.in_('employment_type', cleaned_job_types)
+    
+    cleaned_location_types = clean_list(location_type)
+    if cleaned_location_types:
+        query = query.in_('location_type', cleaned_location_types)
+    
+    cleaned_company_ids = clean_list(company_id)
+    if cleaned_company_ids:
+        query = query.in_('company_id', cleaned_company_ids)
+    
+    response = query.execute()
+    jobs = response.data
+    
+    if not jobs:
+        return {
+            "total_jobs": 0,
+            "jobs_with_salary": 0,
+            "avg_salary": None,
+            "min_salary": None,
+            "max_salary": None,
+            "remote_count": 0,
+            "remote_percentage": 0,
+        }
+    
+    # Calculate salary stats
+    salaries = []
+    for job in jobs:
+        if job.get('salary_min') and job.get('salary_max'):
+            # Use midpoint for average calculation
+            mid = (job['salary_min'] + job['salary_max']) / 2
+            salaries.append(mid)
+        elif job.get('salary_min'):
+            salaries.append(job['salary_min'])
+        elif job.get('salary_max'):
+            salaries.append(job['salary_max'])
+    
+    # Calculate remote stats
+    remote_count = sum(1 for job in jobs if job.get('location_type', '').lower() == 'remote')
+    
+    total_jobs = len(jobs)
+    jobs_with_salary = len(salaries)
+    
+    result = {
+        "total_jobs": total_jobs,
+        "jobs_with_salary": jobs_with_salary,
+        "avg_salary": round(statistics.mean(salaries)) if salaries else None,
+        "min_salary": round(min(salaries)) if salaries else None,
+        "max_salary": round(max(salaries)) if salaries else None,
+        "median_salary": round(statistics.median(salaries)) if salaries else None,
+        "remote_count": remote_count,
+        "remote_percentage": round((remote_count / total_jobs) * 100) if total_jobs > 0 else 0,
+        "currency": "USD",  # Default currency
+    }
+    
+    return result
 
 # --- FAQ Data ---
 @app.get("/api/faqs")
