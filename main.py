@@ -33,6 +33,8 @@ origins = [
     "http://localhost:5173",
     "http://localhost:3000",
     "http://localhost",
+    "https://aiengineerjobs.ai",
+    "https://www.aiengineerjobs.ai",
 ]
 
 app.add_middleware(
